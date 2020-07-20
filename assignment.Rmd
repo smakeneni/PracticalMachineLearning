@@ -1,0 +1,125 @@
+---
+title: "Practical machine learning assignment"
+author: "Spandana Makeneni"
+date: "7/20/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float:
+      collapse: false
+      smooth_scroll: true 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#Goal
+The goal of this project is to predict how well each participant did their exercises. This is the "classe" variable and is a factor variable with 5 levels (A,B,C,D,and E)
+
+Since this is a classification problem, I will use decision tree and random forest methods. Will choose the model with highest accuracy and employ it on the validation data set provided. 
+
+```{r Loadingpackages,message=FALSE,warning=FALSE}
+library(tidyverse)
+library(caret)
+library(randomForest)
+
+```
+
+#Data Source
+The data for this project comes from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+#Data Exploration and cleaning 
+
+```{r dataexploration1}
+data <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+validation <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+dim(data)
+dim(validation)
+
+```
+
+* The data set has 19,622 observations of 160 variables while the validation set has 20 observations of 160 variables 
+* Before we proceed with data cleaning, lets partition the data into training and test data sets (70:30)
+&nbsp;
+```{r createdatapartition}
+
+inTrain <- createDataPartition(y=data$classe,p=0.7,list=F)
+
+training <- data[inTrain,]
+testing <- data[-inTrain,]
+
+#converting the outcome variable to a factor column
+training$classe <- factor(training$classe)
+testing$classe <- factor(testing$classe)
+
+dim(training)
+dim(testing)
+```
+* The training and test data sets have 13737 and 5885 observations respectively.
+* After initial examination of the data, I found that the first 7 columns which contain time stamps and other data are not useful for predicting the "classe" variable. Therefore, we will remove these columns 
+&nbsp;
+```{r datacleaning}
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+validation <- validation[,-c(1:7)]
+```
+* Next, we will check for missing values 
+```{r datacleaning1}
+NA_total <- sapply(1:ncol(training),function(x)sum(is.na(training[,x])))
+NA_total
+```
+* Looks like there are a lot of columns in which have > 90% data missing. We will remove these columns
+```{r datacleaning2}
+NA_cols <- which(NA_total>0)
+training <- training[,-NA_cols]
+testing <- testing[,-NA_cols]
+validation <- validation[,-NA_cols]
+dim(training)
+dim(testing)
+```
+* Additionally, removing columns with zero variance 
+```{r datacleaning3}
+zerovar_cols <- nearZeroVar(training,saveMetrics = TRUE)
+training <- training[,zerovar_cols$nzv==FALSE]
+testing <- testing[,zerovar_cols$nzv==FALSE]
+validation <- validation[,zerovar_cols$nzv==FALSE]
+dim(training)
+dim(testing)
+```
+#Model building
+* Cross Validation - I am going to use a 3 fold cross validation.
+* I will generate two models - one with decision trees and the second using random forest.
+
+##Decision tree
+```{r modelbuilding}
+set.seed(333)
+cv <- trainControl(method="cv",number=3,verboseIter = TRUE)
+dt_model <- train(classe~.,data=training,method="rpart",trControl=cv)
+predict_dt_model<- predict(dt_model,testing)
+dt_confusion_matrix <- confusionMatrix(predict_dt_model,testing$classe)
+print(dt_confusion_matrix)
+```
+* The accuracy is 50% with a decision tree model. This means the out of sample error is ~50% which is really high. Lets see how the random forest model performs.
+
+##Random forest
+```{r modelbuilding1}
+rf_model <- train(classe~.,data=training,method="rf",trControl=cv)
+predict_rf_model <- predict(rf_model,testing)
+rf_confusionmatrix <- confusionMatrix(predict_rf_model,testing$classe)
+print(rf_confusionmatrix)
+```
+
+* The random forest model performs much better with a 99% accuracy which means that out of sample error is ~1%. I will use this model for predicting the validation data 
+
+## Validation prediction
+```{r validation}
+validation_model <- predict(rf_model,validation)
+validation_model
+```
+#Conclusion
+I employed Random forest and Decision trees to predict "classe" which quantifies how well a person exercises. Based on accuracy and out of sample error values, random forest performs much better than decision trees.
